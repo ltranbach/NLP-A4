@@ -44,7 +44,65 @@ def custom_transform(example):
 
     # You should update example["text"] using your transformation
 
-    raise NotImplementedError
+    import re
+
+    rows = [
+        "qwertyuiop",
+        "asdfghjkl",
+        "zxcvbnm"
+    ]
+
+    neighbors = {}
+
+    for row in rows:
+        for i, char in enumerate(row):
+            options = []
+
+            if i > 0:
+                options.append(row[i - 1])
+
+            if i < len(row) - 1:
+                options.append(row[i + 1])
+
+            neighbors[char] = options
+
+    unshift = dict(zip(
+        '~!@#$%^&*()_+{}|:"<>?',
+        '`1234567890-=[]\\;\',./'
+    ))
+
+    def transform_match(match):
+        text = match.group()
+
+        if text.startswith("<"):
+            return text
+
+        if len(text) == 1 and text in unshift:
+            if random.random() < 0.35:
+                return unshift[text]
+            return text
+
+        if len(text) < 4 or random.random() >= 0.35:
+            return text
+
+        i = random.randrange(len(text))
+        char = text[i]
+        lower = char.lower()
+
+        replacement = random.choice(neighbors[lower])
+
+        if char.isupper():
+            replacement = replacement.upper()
+
+        return text[:i] + replacement + text[i + 1:]
+
+    example["text"] = re.sub(
+        r"<[^>]*>|[A-Za-z]{4,}|[~!@#$%^&*()_+{}|:\"<>?]",
+        transform_match,
+        example["text"]
+    )
+
+    return example
 
     ##### YOUR CODE ENDS HERE ######
 

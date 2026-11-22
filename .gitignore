@@ -2,3 +2,11 @@
 __pycache__/
 *.pyc
 .claude/settings.local.json
+
+part2/checkpoints/
+part2/records/*.pkl
+part2/results/*.sql
+part2/error_analysis.txt
+part2/error_statistics.txt
+__pycache__/
+*.pyc
