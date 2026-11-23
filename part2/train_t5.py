@@ -157,9 +157,9 @@ def eval_epoch(args, model, dev_loader, gt_sql_pth, model_sql_path, gt_record_pa
 
         with torch.no_grad():
             logits = model(
-                input_ids=encoder_input,
-                attention_mask=encoder_mask,
-                decoder_input_ids=decoder_input
+                input_ids = encoder_input,
+                attention_mask = encoder_mask,
+                decoder_input_ids = decoder_input
             ).logits
 
             non_pad = decoder_targets != PAD_IDX

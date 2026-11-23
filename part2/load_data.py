@@ -92,13 +92,15 @@ def normal_collate_fn(batch):
 
     for encoder_ids, target_ids in batch:
         encoder_sequences.append(
-            torch.tensor(encoder_ids, dtype = torch.long)
+            torch.tensor(
+                encoder_ids, 
+                dtype = torch.long)
             )
 
         decoder_inputs.append(
             torch.tensor(
                 [start_id] + target_ids[:-1],
-                dtype=torch.long
+                dtype = torch.long
                 )
         )
 
@@ -176,7 +178,9 @@ def test_collate_fn(batch):
         )
 
         initial_decoder_inputs.append(
-            torch.tensor([start_id], dtype=torch.long)
+            torch.tensor(
+                [start_id], 
+                dtype = torch.long)
         )
 
     encoder_ids = pad_sequence(
