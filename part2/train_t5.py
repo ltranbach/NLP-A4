@@ -11,6 +11,7 @@ from t5_utils import initialize_model, initialize_optimizer_and_scheduler, save_
 from transformers import GenerationConfig
 from load_data import load_t5_data
 from utils import compute_metrics, save_queries_and_records
+from transformers import T5TokenizerFast
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 PAD_IDX = 0
@@ -138,16 +139,110 @@ def eval_epoch(args, model, dev_loader, gt_sql_pth, model_sql_path, gt_record_pa
     should both provide good results. If you find that this component of evaluation takes too long with your compute,
     we found the cross-entropy loss (in the evaluation set) to be well (albeit imperfectly) correlated with F1 performance.
     '''
-    # TODO
     model.eval()
-    return 0, 0, 0, 0, 0
+    tokenizer = T5TokenizerFast.from_pretrained("google-t5/t5-small")
+
+    criterion = nn.CrossEntropyLoss()
+    total_loss = 0.0
+    total_tokens = 0
+    predicted_sql = []
+
+    for encoder_input, encoder_mask, decoder_input, decoder_targets, initial_decoder_inputs in tqdm(dev_loader):
+
+        encoder_input = encoder_input.to(DEVICE)
+        encoder_mask = encoder_mask.to(DEVICE)
+        decoder_input = decoder_input.to(DEVICE)
+        decoder_targets = decoder_targets.to(DEVICE)
+        initial_decoder_inputs = initial_decoder_inputs.to(DEVICE)
+
+        with torch.no_grad():
+            logits = model(
+                input_ids=encoder_input,
+                attention_mask=encoder_mask,
+                decoder_input_ids=decoder_input
+            ).logits
+
+            non_pad = decoder_targets != PAD_IDX
+            loss = criterion(
+                logits[non_pad],
+                decoder_targets[non_pad]
+            )
+
+            num_tokens = non_pad.sum().item()
+            total_loss += loss.item() * num_tokens
+            total_tokens += num_tokens
+
+            generated = model.generate(
+                input_ids = encoder_input,
+                attention_mask = encoder_mask,
+                decoder_input_ids = initial_decoder_inputs,
+                max_new_tokens = 512,
+                num_beams = 1
+            )
+
+        predicted_sql.extend(
+            tokenizer.batch_decode(
+                generated,
+                skip_special_tokens = True
+            )
+        )
+
+    avg_loss = total_loss / total_tokens
+
+    save_queries_and_records(
+        predicted_sql,
+        model_sql_path,
+        model_record_path
+    )
+
+    sql_em, record_em, record_f1, error_msgs = compute_metrics(
+        gt_sql_pth,
+        model_sql_path,
+        gt_record_path,
+        model_record_path
+    )
+
+    error_rate = sum(bool(msg) for msg in error_msgs) / len(error_msgs)
+
+    return avg_loss, record_f1, record_em, sql_em, error_rate
         
 def test_inference(args, model, test_loader, model_sql_path, model_record_path):
     '''
     You must implement inference to compute your model's generated SQL queries and its associated 
     database records. Implementation should be very similar to eval_epoch.
     '''
-    pass
+    model.eval()
+    tokenizer = T5TokenizerFast.from_pretrained("google-t5/t5-small")
+
+    predicted_sql = []
+
+    for encoder_input, encoder_mask, initial_decoder_inputs in tqdm(test_loader):
+
+        encoder_input = encoder_input.to(DEVICE)
+        encoder_mask = encoder_mask.to(DEVICE)
+        initial_decoder_inputs = initial_decoder_inputs.to(DEVICE)
+
+        with torch.no_grad():
+            generated = model.generate(
+                input_ids = encoder_input,
+                attention_mask = encoder_mask,
+                decoder_input_ids = initial_decoder_inputs,
+                max_new_tokens = 512,
+                num_beams = 1
+            )
+
+        predicted_sql.extend(
+            tokenizer.batch_decode(
+                generated,
+                skip_special_tokens = True
+            ) 
+        )
+
+    save_queries_and_records(
+        predicted_sql,
+        model_sql_path,
+        model_record_path
+    )
 
 def main():
     # Get key arguments

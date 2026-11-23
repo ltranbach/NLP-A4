@@ -26,16 +26,45 @@ class T5Dataset(Dataset):
               T5Tokenizer should serve that purpose.
             * Class behavior should be different on the test set.
         '''
-        # TODO
+        self.tokenizer = T5TokenizerFast.from_pretrained("google-t5/t5-small")
+        self.split = split
+        self.data = self.process_data(
+            data_folder, 
+            split, 
+            self.tokenizer
+        )
 
     def process_data(self, data_folder, split, tokenizer):
-        # TODO
+        questions = load_lines(os.path.join(data_folder, f"{split}.nl"))
+
+        if split != "test":
+            queries = load_lines(os.path.join(data_folder, f"{split}.sql"))
+            assert len(questions) == len(queries)
+
+        data = []
+
+        for i, question in enumerate(questions):
+            encoder_ids = tokenizer.encode(
+                question, 
+                add_special_tokens = True
+            )
+
+            if split == "test":
+                data.append((encoder_ids, None))
+            else:
+                decoder_targets = tokenizer.encode(
+                    queries[i], 
+                    add_special_tokens = True
+                )
+                data.append((encoder_ids, decoder_targets))
+
+        return data
     
     def __len__(self):
-        # TODO
+        return len(self.data)
 
     def __getitem__(self, idx):
-        # TODO
+        return self.data[idx]
 
 def normal_collate_fn(batch):
     '''
@@ -53,8 +82,71 @@ def normal_collate_fn(batch):
         * decoder_targets: The target tokens with which to train the decoder (the tokens following each decoder input)
         * initial_decoder_inputs: The very first input token to be decoder (only to be used in evaluation)
     '''
-    # TODO
-    return [], [], [], [], []
+    encoder_sequences = []
+    decoder_inputs = []
+    decoder_targets = []
+    initial_decoder_inputs = []
+
+    tokenizer = T5TokenizerFast.from_pretrained("google-t5/t5-small")
+    start_id = tokenizer.convert_tokens_to_ids("<extra_id_0>")
+
+    for encoder_ids, target_ids in batch:
+        encoder_sequences.append(
+            torch.tensor(encoder_ids, dtype = torch.long)
+            )
+
+        decoder_inputs.append(
+            torch.tensor(
+                [start_id] + target_ids[:-1],
+                dtype=torch.long
+                )
+        )
+
+        decoder_targets.append(
+            torch.tensor(
+                target_ids, 
+                dtype = torch.long
+                )
+        )
+
+        initial_decoder_inputs.append(
+            torch.tensor(
+                [start_id], 
+                dtype = torch.long
+                )
+        )
+
+    encoder_ids = pad_sequence(
+        encoder_sequences,
+        batch_first = True,
+        padding_value = PAD_IDX
+    )
+
+    encoder_mask = (encoder_ids != PAD_IDX).long()
+
+    decoder_inputs = pad_sequence(
+        decoder_inputs,
+        batch_first = True,
+        padding_value = PAD_IDX
+    )
+
+    decoder_targets = pad_sequence(
+        decoder_targets,
+        batch_first = True,
+        padding_value = PAD_IDX
+    )
+
+    initial_decoder_inputs = torch.stack(
+        initial_decoder_inputs
+    )
+
+    return (
+        encoder_ids,
+        encoder_mask,
+        decoder_inputs,
+        decoder_targets,
+        initial_decoder_inputs
+    )
 
 def test_collate_fn(batch):
     '''
@@ -69,8 +161,41 @@ def test_collate_fn(batch):
         * encoder_mask: Mask of shape BxT associated with padding tokens in the encoder input
         * initial_decoder_inputs: The very first input token to be decoder (only to be used in evaluation)
     '''
-    # TODO
-    return [], [], []
+    encoder_sequences = []
+    initial_decoder_inputs = []
+
+    tokenizer = T5TokenizerFast.from_pretrained("google-t5/t5-small")
+    start_id = tokenizer.convert_tokens_to_ids("<extra_id_0>")
+
+    for encoder_ids, _ in batch:
+        encoder_sequences.append(
+            torch.tensor(
+                encoder_ids, 
+                dtype = torch.long
+                )
+        )
+
+        initial_decoder_inputs.append(
+            torch.tensor([start_id], dtype=torch.long)
+        )
+
+    encoder_ids = pad_sequence(
+        encoder_sequences,
+        batch_first = True,
+        padding_value = PAD_IDX
+    )
+
+    encoder_mask = (encoder_ids != PAD_IDX).long()
+
+    initial_decoder_inputs = torch.stack(
+        initial_decoder_inputs
+    )
+
+    return (
+        encoder_ids,
+        encoder_mask,
+        initial_decoder_inputs
+    )
 
 def get_dataloader(batch_size, split):
     data_folder = 'data'
